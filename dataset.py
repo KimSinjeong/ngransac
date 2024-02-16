@@ -4,6 +4,7 @@ import os
 import cv2
 import math
 import util
+import pickle
 
 from torch.utils.data import Dataset
 
@@ -31,7 +32,13 @@ class SparseDataset(Dataset):
 	def __getitem__(self, idx):
 
 		# load precalculated correspondences
-		data = np.load(self.files[idx], allow_pickle=True)
+		# data = np.load(self.files[idx], allow_pickle=True)
+		# load precalculated correspondences using pickle
+		data = None
+		with open(self.files[idx], 'rb') as f:
+			data = pickle.load(f)
+		assert data is not None, f"Error: Correspondences {self.files[idx]} could not be loaded."
+
 
 		# correspondence coordinates and matching ratios (side information)
 		pts1, pts2, ratios = data[0], data[1], data[2]

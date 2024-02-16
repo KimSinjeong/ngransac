@@ -8,6 +8,7 @@ import random
 
 import torch
 import util
+import pickle
 
 # parse command line arguments
 parser = argparse.ArgumentParser(
@@ -17,7 +18,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--dataset', '-ds', default='dataset_kitti',
 	help='Root folder of the Kitti odometry dataset. Should contain folders "poses" and "sequences".')
 
-parser.add_argument('--variant', '-v', default='train', choices=['train', 'test']
+parser.add_argument('--variant', '-v', default='train', choices=['train', 'test'],
 	help='Defines subfolders of the dataset ot use (split according to "Deep Fundamental Matrix", Ranftl and Koltun, ECCV 2018).')
 
 parser.add_argument('--orb', '-orb', action='store_true', 
@@ -177,14 +178,27 @@ for i, vis_pair in enumerate(vis_pairs):
 	GT_t_Rel = GT_t2.T - np.matmul(GT_R_Rel, GT_t1.T)
 
 	#save data tensor and ground truth transformation
-	np.save(out_dir + 'pair_%d_%d.npy' % (img1_idx, img2_idx), [
-		pts1.astype(np.float32), 
-		pts2.astype(np.float32), 
-		ratios.astype(np.float32), 
-		img1.shape, 
-		img2.shape, 
-		K1.astype(np.float32), 
-		K2.astype(np.float32), 
-		GT_R_Rel.astype(np.float32), 
-		GT_t_Rel.astype(np.float32)
-		])
+	# np.save(out_dir + 'pair_%d_%d.npy' % (img1_idx, img2_idx), [
+	# 	pts1.astype(np.float32), 
+	# 	pts2.astype(np.float32), 
+	# 	ratios.astype(np.float32), 
+	# 	img1.shape, 
+	# 	img2.shape, 
+	# 	K1.astype(np.float32), 
+	# 	K2.astype(np.float32), 
+	# 	GT_R_Rel.astype(np.float32), 
+	# 	GT_t_Rel.astype(np.float32)
+	# 	])
+	# Change the above code to pickle
+	with open(out_dir + 'pair_%d_%d.pkl' % (img1_idx, img2_idx), 'wb') as f:
+		pickle.dump([
+			pts1.astype(np.float32), 
+			pts2.astype(np.float32), 
+			ratios.astype(np.float32), 
+			img1.shape, 
+			img2.shape, 
+			K1.astype(np.float32), 
+			K2.astype(np.float32), 
+			GT_R_Rel.astype(np.float32), 
+			GT_t_Rel.astype(np.float32)
+			], f)
