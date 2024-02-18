@@ -37,6 +37,8 @@ if opt.orb:
 	data_folder += '_orb'
 if opt.rootsift:
 	data_folder += '_rs'
+if opt.superpoint:
+	data_folder += '_sp'
 
 train_data = opt.datasets.split(',')  #support multiple training datasets used jointly
 train_data = ['traindata/' + ds + '/' + data_folder + '/' for ds in train_data]

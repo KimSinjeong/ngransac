@@ -50,6 +50,8 @@ if opt.orb:
 	data_folder += '_orb'
 if opt.rootsift:
 	data_folder += '_rs'
+if opt.superpoint:
+	data_folder += '_sp'
 
 train_data = opt.datasets.split(',') #support multiple training datasets used jointly
 train_data = ['traindata/' + ds + '/' + data_folder + '/' for ds in train_data]
@@ -142,7 +144,7 @@ for epoch in range(0, opt.epochs):
 					pts2 = correspondences[b,2:4].numpy()
 
 					# compute fundamental matrix metrics if they are used as training signal
-					if opt.loss is not 'pose':
+					if opt.loss != 'pose':
 						valid, F1, incount, epi_error = util.f_error(pts1, pts2, F.numpy(), gt_F[b].numpy(), opt.threshold)
 					
 					# normalize correspondences using the calibration parameters for the calculation of pose errors
@@ -173,10 +175,11 @@ for epoch in range(0, opt.epochs):
 					inliers = inliers.byte().numpy().ravel()
 					E = E.double().numpy()
 					K = np.eye(3)
-					R = np.eye(3)
-					t = np.zeros((3,1))
+					# R = np.eye(3)
+					# t = np.zeros((3,1))
 
-					cv2.recoverPose(E, pts1, pts2, K, R, t, inliers)
+					# print("E: ", E.shape, "pts1: ", pts1.shape, "pts2: ", pts2.shape, "K: ", K.shape, "R: ", R.shape, "t: ", t.shape, "inliers: ", inliers.shape, flush=True)
+					n, R, t, mask = cv2.recoverPose(E, pts1, pts2, K, mask=inliers)
 					dR, dT = util.pose_error(R, gt_R[b], t, gt_t[b])
 					loss = max(float(dR), float(dT))
 						

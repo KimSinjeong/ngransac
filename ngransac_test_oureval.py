@@ -11,6 +11,8 @@ from network import CNNet
 from dataset import SparseDataset
 import util
 
+import pygcransac
+
 parser = util.create_parser(
 	description = "Test NG-RANSAC on pre-calculated correspondences.")
 
@@ -42,6 +44,19 @@ opt = parser.parse_args()
 
 print("")
 
+def pose_auc(errors, thresholds):
+    sort_idx = np.argsort(errors)
+    errors = np.array(errors.copy())[sort_idx]
+    recall = (np.arange(len(errors)) + 1) / len(errors)
+    errors = np.r_[0., errors]
+    recall = np.r_[0., recall]
+    aucs = []
+    for t in thresholds:
+        last_index = np.searchsorted(errors, t)
+        r = np.r_[recall[:last_index], recall[last_index-1]]
+        e = np.r_[errors[:last_index], t]
+        aucs.append(np.trapz(r, x=e)/t)
+    return aucs
 
 if opt.uniform:
 	print("Using uniform sampling (no model loaded).")
@@ -62,12 +77,16 @@ else:
 
 # construct folder that should contain pre-calculated correspondences
 data_folder = opt.variant + '_data'
+datatype = ''
 if opt.orb:
 	data_folder += '_orb'
+	datatype = '_orb'
 if opt.rootsift:
 	data_folder += '_rs'
+	datatype = '_rs'
 if opt.superpoint:
 	data_folder += '_sp'
+	datatype = '_sp'
 
 # collect datasets to be used for testing
 if opt.batchmode:
@@ -169,20 +188,33 @@ for dataset in datasets:
 					
 					#run NG-RANSAC
 					start_time = time.time()
-					incount = ngransac.find_essential_mat(correspondences[b], probs[b], rand_seed, opt.hyps, opt.threshold, E, inliers, gradients)		
+					incount = ngransac.find_essential_mat(correspondences[b], probs[b], rand_seed, opt.hyps, opt.threshold, E, inliers, gradients)
 					ransac_time += time.time()-start_time
 
-					pts1 = correspondences[b,0:2].squeeze().numpy().T
-					pts2 = correspondences[b,2:4].squeeze().numpy().T				
+					pts1 = correspondences[b,0:2].numpy()
+					pts2 = correspondences[b,2:4].numpy()
+
+					# evaluation of F matrix via correspondences
+					valid, F1, epi_inliers, epi_error = util.f_error(pts1, pts2, E, gt_E[b].numpy(), opt.threshold)
+					pts1 = pts1[...,0].T
+					pts2 = pts2[...,0].T
+
+					if valid:
+						avg_F1 += F1
+						avg_inliers += epi_inliers
+						epi_errors.append(epi_error)
+					else:
+						# F matrix evlaution failed (ground truth model had no inliers)
+						invalid_pairs += 1			
 
 				inliers = inliers.byte().numpy().ravel()
 				E = E.double().numpy()
 				K = np.eye(3)
-				R = np.eye(3)
-				t = np.zeros((3,1))
+				# R = np.eye(3)
+				# t = np.zeros((3,1))
 
 				# evaluation of relative pose (essential matrix)
-				cv2.recoverPose(E, pts1, pts2, K, R, t, inliers)
+				n, R, t, mask = cv2.recoverPose(E, pts1, pts2, K, mask=inliers)
 
 				dR, dT = util.pose_error(R, gt_R[b], t, gt_t[b])
 				pose_losses.append(max(float(dR), float(dT)))
@@ -190,38 +222,42 @@ for dataset in datasets:
 			avg_ransac_time += ransac_time /  opt.batchsize
 			avg_counter += 1
 
-	print("\nAvg. Model Time: %dms" % (avg_model_time / avg_counter*1000))
-	print("Avg. RANSAC Time: %dms" % (avg_ransac_time / avg_counter*1000))
+	print("\nAvg. Model Time: %dms" % (avg_model_time / avg_counter*1000), flush=True)
+	print("Avg. RANSAC Time: %dms" % (avg_ransac_time / avg_counter*1000), flush=True)
 	 
 	# calculate AUC of pose losses
 	thresholds = [5, 10, 20]
-	AUC = util.AUC(losses = pose_losses, thresholds = thresholds, binsize = opt.evalbinsize)
+	# AUC = util.AUC(losses = pose_losses, thresholds = thresholds, binsize = opt.evalbinsize)
+	AUC = pose_auc(pose_losses, thresholds)
+	AUC = [100.*yy for yy in AUC]
 
-	print("\n=== Relative Pose Accuracy ===========================")
-	print("AUC for %ddeg/%ddeg/%ddeg: %.2f/%.2f/%.2f\n" % (thresholds[0], thresholds[1], thresholds[2], AUC[0], AUC[1], AUC[2]))
+	print("\n=== Relative Pose Accuracy ===========================", flush=True)
+	print("AUC for %ddeg/%ddeg/%ddeg: %.2f/%.2f/%.2f\n" % (thresholds[0], thresholds[1], thresholds[2], AUC[0], AUC[1], AUC[2]), flush=True)
+	print("Mean Pose Error: %.2fdeg" % (sum(pose_losses) / len(pose_losses)), flush=True)
+	print("Median Pose Error: %.2fdeg" % (sorted(pose_losses)[int(len(pose_losses) / 2)]), flush=True)
 
-	if opt.fmat:
+	# if opt.fmat:
 
-		print("\n=== F-Matrix Evaluation ==============================")
+	print("\n=== E/F-Matrix Evaluation ==============================", flush=True)
 
-		if len(epi_errors) == 0:
-			print("F-Matrix evaluation failed because no ground truth inliers were found.")
-			print("Check inlier threshold?.")
-		else:
-			avg_F1 /= len(epi_errors)
-			avg_inliers /= len(epi_errors)
+	if len(epi_errors) == 0:
+		print("F-Matrix evaluation failed because no ground truth inliers were found.", flush=True)
+		print("Check inlier threshold?.", flush=True)
+	else:
+		avg_F1 /= len(epi_errors)
+		avg_inliers /= len(epi_errors)
 
-			epi_errors.sort()
-			mean_epi_err = sum(epi_errors) / len(epi_errors)
-			median_epi_err = epi_errors[int(len(epi_errors)/2)]
+		epi_errors.sort()
+		mean_epi_err = sum(epi_errors) / len(epi_errors)
+		median_epi_err = epi_errors[int(len(epi_errors)/2)]
 
-			print("Invalid Pairs (ignored in the following metrics):", invalid_pairs)
-			print("F1 Score: %.2f%%" % (avg_F1 * 100))
-			print("%% Inliers: %.2f%%" % (avg_inliers * 100))
-			print("Mean Epi Error: %.2f" % mean_epi_err)
-			print("Median Epi Error: %.2f" % median_epi_err)
+		print("Invalid Pairs (ignored in the following metrics):", invalid_pairs, flush=True)
+		print("F1 Score: %.2f%%" % (avg_F1 * 100), flush=True)
+		print("%% Inliers: %.2f%%" % (avg_inliers * 100), flush=True)
+		print("Mean Epi Error: %.2f" % mean_epi_err, flush=True)
+		print("Median Epi Error: %.2f" % median_epi_err, flush=True)
 
-	session_string = util.create_session_string('test', opt.fmat, opt.orb, opt.rootsift, opt.ratio, opt.session)
+	session_string = util.create_session_string_ours('test', opt.fmat, opt.ratio, opt.session, datatype)
 
 	# write evaluation results to file
 	out_dir = 'results/' + dataset + '/'

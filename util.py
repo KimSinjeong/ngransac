@@ -188,6 +188,9 @@ def create_parser(description):
 
 	parser.add_argument('--orb', '-orb', action='store_true', 
 		help='use ORB instead of SIFT')
+	
+	parser.add_argument('--superpoint', '-sp', action='store_true', 
+		help='use SuperPoint instead of SIFT and ORB')
 
 	parser.add_argument('--nfeatures', '-nf', type=int, default=2000, 
 		help='fixes number of features by clamping/replicating, set to -1 for dynamic feature count but then batchsize (-bs) has to be set to 1')
@@ -230,6 +233,29 @@ def create_session_string(prefix, fmat, orb, rootsift, ratio, session):
 	
 	if orb:	session_string += 'orb_'
 	if rootsift: session_string += 'rs_'
+	session_string += 'r%.2f_' % ratio
+	session_string += session
+
+	return session_string
+
+def create_session_string_ours(prefix, fmat, ratio, session, datatype=''):
+	"""Create an identifier string from the most common parameter options.
+
+	Keyword arguments:
+	prefix -- custom string appended at the beginning of the session string
+	fmat -- bool indicating whether fundamental matrices or essential matrices are estimated
+	orb -- bool indicating whether ORB features or SIFT features are used
+	rootsift -- bool indicating whether RootSIFT normalization is used
+	ratio -- threshold for Lowe's ratio filter
+	session -- custom string appended at the end of the session string
+	"""
+	session_string = prefix + '_'
+	if fmat:
+		session_string += 'F_'
+	else:
+		session_string += 'E_'
+	
+	session_string += datatype
 	session_string += 'r%.2f_' % ratio
 	session_string += session
 

@@ -68,9 +68,10 @@ class SparseDataset(Dataset):
 			util.normalize_pts(pts2, im_size2)
 		else:
 			#for essential matrices, normalize image coordinate using the calibration parameters
-			pts1 = cv2.undistortPoints(pts1, K1.numpy(), None)
-			pts2 = cv2.undistortPoints(pts2, K2.numpy(), None)
+			pts1 = cv2.undistortPoints(pts1, K1.numpy(), None).reshape(1, -1, 2)
+			pts2 = cv2.undistortPoints(pts2, K2.numpy(), None).reshape(1, -1, 2)
 
+		# print("pts and ratios shape: ", pts1.shape, pts2.shape, ratios.shape)
 		# stack image coordinates and side information into one tensor
 		correspondences = np.concatenate((pts1, pts2, ratios), axis=2)
 		correspondences = np.transpose(correspondences)
